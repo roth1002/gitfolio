@@ -27,33 +27,35 @@ function convertToEmoji(text) {
     }
 }
 
-module.exports.updateHTML = (username) => {
+module.exports.updateHTML = (username, sort, order) => {
     //add data to assets/index.html
     jsdom.fromFile("./assets/index.html", options).then(function (dom) {
         let window = dom.window, document = window.document;
         (async () => {
             try {
-                console.log("Building HTML/CSS...");
-                var repos = await got(`https://api.github.com/users/${username}/repos?sort=created`);
-                repos = JSON.parse(repos.body);
-                for (var i = 0; i < repos.length; i++) {
-                    if (repos[i].fork == false) {
-                        document.getElementById("projects").innerHTML += `
-                    <a href="${repos[i].html_url}" target="_blank">
-                    <section>
-                        <div class="section_title">${repos[i].name}</div>
-                        <div class="about_section">
-                        <span style="display:${repos[i].description == undefined ? 'none' : 'block'};">${convertToEmoji(repos[i].description)}</span>
-                        </div>
-                        <div class="bottom_section">
-                            <span style="display:${repos[i].language == null ? 'none' : 'inline-block'};"><i class="fas fa-code"></i>&nbsp; ${repos[i].language}</span>
-                            <span><i class="fas fa-star"></i>&nbsp; ${repos[i].stargazers_count}</span>
-                            <span><i class="fas fa-code-branch"></i>&nbsp; ${repos[i].forks_count}</span>
-                        </div>
-                    </section>
-                    </a>`;
-                    }
-                }
+             console.log("Building HTML/CSS/JS...");
+            var repos = await got(`https://api.github.com/users/${username}/repos`);
+            repos = JSON.parse(repos.body);
+            for(var i = 0;i < repos.length;i++){
+                if(repos[i].fork == false){
+					repos[i].description = convertToEmoji(repos[i].description);
+					savedRepos.push(repos[i]);      
+                } else {
+					repos[i].description = convertToEmoji(repos[i].description);
+					savedForks.push(repos[i]);
+				}
+            }
+			saveToFile(sort, order, document);
+
+			
+			if(savedRepos.length){
+				document.getElementById("navbar").innerHTML += `
+				<a href="#projects">Projects</a>`;
+			}
+			if(savedForks.length){
+				document.getElementById("navbar").innerHTML += `
+				<a href="#forks">Forks</a>`;
+            }
                 var user = await got(`https://api.github.com/users/${username}`);
                 user = JSON.parse(user.body);
                 document.title = user.login;
@@ -97,3 +99,65 @@ module.exports.updateHTML = (username) => {
         console.log(error);
     });
 }
+
+function saveToFile(sort, order, document){
+	fs.writeFile("./dist/repos.json", JSON.stringify(savedRepos), function(err) {
+		if (err) {
+			console.log(err);
+		}
+		
+		populateHTML('repos', sort, order, document);
+	});
+	
+	fs.writeFile("./dist/forks.json", JSON.stringify(savedForks), function(err) {
+		if (err) {
+			console.log(err);
+		}
+		
+		populateHTML('forks', sort, order, document);
+	});
+}
+
+function populateHTML(type, sort, order, document){
+	let data = require('./dist/' + type + '.json');
+	let result = [];
+	result = data.sort(GetSortOrder(sort, order));
+	
+	if(result.length){
+		for(var i = 0;i < result.length;i++){
+            document.getElementById(type === 'repos' ? 'projects' : 'forks').innerHTML += `
+            <a href="${result[i].html_url}" target="_blank">
+                <section>
+                    <div class="section_title">${result[i].name}</div>
+                       <div class="about_section">
+					<span style="display:${result[i].description == undefined ? 'none' : 'block'};">${result[i].description}</span>
+                    </div>
+                    <div class="bottom_section">
+                        <span style="display:${result[i].language == null ? 'none' : 'inline-block'};"><i class="fas fa-code"></i>&nbsp; ${result[i].language}</span>
+                        <span><i class="fas fa-star"></i>&nbsp; ${result[i].stargazers_count}</span>
+                        <span><i class="fas fa-code-branch"></i>&nbsp; ${result[i].forks_count}</span>
+                    </div>
+                </section>
+            </a>`;
+		}
+	}
+}
+
+function GetSortOrder(prop, order) {  
+    return function(a, b) {  
+		if(typeof(a[prop]) === 'string'){
+			if (a[prop].toLowerCase() > b[prop].toLowerCase()) {  
+				return 1 * order;  
+			} else if (a[prop].toLowerCase() < b[prop].toLowerCase()) {  
+				return -1 * order;  
+			}  
+		} else {
+			if (a[prop] > b[prop]) {  
+				return 1 * order;  
+			} else if (a[prop] < b[prop]) {  
+				return -1 * order;  
+			}  
+		}
+        return 0;  
+    }  
+} 
